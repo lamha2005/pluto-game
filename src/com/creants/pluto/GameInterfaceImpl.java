@@ -5,6 +5,8 @@ import com.avengers.netty.core.om.IRoom;
 import com.avengers.netty.core.util.CoreTracer;
 import com.avengers.netty.gamelib.GameAPI;
 import com.avengers.netty.gamelib.GameInterface;
+import com.avengers.netty.gamelib.key.NetworkConstant;
+import com.avengers.netty.gamelib.om.RoomInfo;
 import com.avengers.netty.gamelib.result.IPlayMoveResult;
 import com.avengers.netty.socket.gate.IMessage;
 import com.avengers.netty.socket.gate.wood.Message;
@@ -14,6 +16,7 @@ import com.creants.pluto.handler.FinishRequestHandler;
 import com.creants.pluto.handler.ReadyRequestHandler;
 import com.creants.pluto.logic.MauBinhGame;
 import com.creants.pluto.logic.TestUnit;
+import com.creants.pluto.logic.TournamentGame;
 import com.creants.pluto.util.GameCommand;
 import com.creants.pluto.util.MessageFactory;
 import com.google.gson.JsonObject;
@@ -33,7 +36,19 @@ public class GameInterfaceImpl extends AbstractGameLogic implements GameInterfac
 
 	@Override
 	public MauBinhGame createGameLogic(IRoom room) {
-		return gameLogic = new MauBinhGame(room);
+		Object roomInfo = room.getProperty(NetworkConstant.ROOM_INFO);
+		int moneyBet = 0;
+		boolean isTournament = false;
+		if (roomInfo != null) {
+			moneyBet = ((RoomInfo) roomInfo).getBetCoin();
+		}
+
+		if (isTournament)
+			gameLogic = new TournamentGame(room, moneyBet);
+		else
+			gameLogic = new MauBinhGame(room, moneyBet);
+
+		return gameLogic;
 	}
 
 	@Override

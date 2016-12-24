@@ -23,6 +23,7 @@ import com.avengers.netty.gamelib.key.NetworkConstant;
 import com.avengers.netty.gamelib.om.RoomInfo;
 import com.avengers.netty.socket.gate.wood.Message;
 import com.avengers.netty.socket.gate.wood.User;
+import com.creants.pluto.handler.ReadyRequestHandler;
 import com.creants.pluto.logic.state.GameState;
 import com.creants.pluto.om.MauBinhType;
 import com.creants.pluto.om.Player;
@@ -41,10 +42,10 @@ import com.google.gson.JsonObject;
  *
  */
 public class MauBinhGame {
-	public STATE gameState;
+	public STATE gameState = STATE.NOT_START;
 	public GameState preState;
 	public GameState curState;
-	private GameAPI gameApi;
+	protected GameAPI gameApi;
 	private MoneyManager moneyManager;
 	private MauBinhCardSet cardSet;
 	private Integer countDownSeconds = 0;
@@ -57,20 +58,15 @@ public class MauBinhGame {
 	private ScheduledFuture<?> countdownSchedule;
 	private static final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 
-	public MauBinhGame(IRoom room) {
+	public MauBinhGame(IRoom room, int moneyBet) {
 		this.room = room;
-		gameState = STATE.NOT_START;
+		this.moneyBet = moneyBet;
 
 		cardSet = new MauBinhCardSet();
 		players = new Player[] { new Player(), new Player(), new Player(), new Player() };
 
 		disconnectedUsers = new ConcurrentHashMap<Integer, User>();
-		Object roomInfo = room.getProperty(NetworkConstant.ROOM_INFO);
-		if (roomInfo != null) {
-			moneyBet = ((RoomInfo) roomInfo).getBetCoin();
-		}
-
-		moneyManager = new MoneyManager(moneyBet);
+		moneyManager = new MoneyManager(this.moneyBet);
 	}
 
 	public void setGameState(GameState gameState) {
@@ -83,6 +79,10 @@ public class MauBinhGame {
 		if (this.curState != null) {
 			this.curState.onEnter(this);
 		}
+	}
+
+	protected void setGameState(STATE gameState) {
+		this.gameState = gameState;
 	}
 
 	public void setGameApi(GameAPI gameApi) {
@@ -98,6 +98,26 @@ public class MauBinhGame {
 		}
 
 		return null;
+	}
+
+	public void ready(User user) {
+		if (!moneyManager.checkEnoughMoney(user)) {
+			// báo user đó đã hết tiền
+			notifyNotEnoughMoney(user);
+			gameApi.leaveRoom(user.getUserId());
+			return;
+		}
+
+		Player player = getPlayerByUser(user);
+		// TODO nên check tiền ở đây luôn
+		if (player != null && player.getUser() != null) {
+			CoreTracer.debug(ReadyRequestHandler.class, "[DEBUG] [" + user.getUserName() + "] is ready.");
+			player.setReady(true);
+			gameApi.sendToUser(MessageFactory.createMauBinhMessage(GameCommand.ACTION_READY), user);
+		} else {
+			CoreTracer.error(ReadyRequestHandler.class, "[ERROR] [" + user.getUserName() + "] is not player. ");
+		}
+
 	}
 
 	public boolean reconnect(User user) {
@@ -127,12 +147,10 @@ public class MauBinhGame {
 			return false;
 		}
 
-		gameApi.sendResponseForListUser(buildRoomInfo(user, false), room.getPlayersList());
-
-		IRoom lastJoinedRoom = user.getLastJoinedRoom();
 		CoreTracer.debug(this.getClass(), String.format("[DEBUG] [user: %s] do join room [roomId:%d, roomName:%s]",
-				user.getUserName(), lastJoinedRoom.getId(), lastJoinedRoom.getName()));
+				user.getUserName(), room.getId(), room.getName()));
 
+		gameApi.sendResponseForListUser(buildRoomInfo(user, false), room.getPlayersList());
 		startWaitingPlayer();
 		return true;
 	}
@@ -206,11 +224,11 @@ public class MauBinhGame {
 		return room.getOwner();
 	}
 
-	private int playerSize() {
+	protected int playerSize() {
 		return room.getPlayersList().size();
 	}
 
-	private void startCountDown(int startAfterSeconds) {
+	protected void startCountDown(int startAfterSeconds) {
 		countDownSeconds = startAfterSeconds;
 		if (countdownSchedule == null || countdownSchedule.isCancelled()) {
 			update();
@@ -249,6 +267,8 @@ public class MauBinhGame {
 	}
 
 	private void notifyNotEnoughMoney(User user) {
+		debug("[DEBUG] " + user.getUserName() + " Đá khi hết tiền! Not enough money. " + user.getMoney() + "/bet:"
+				+ moneyManager.getGameMoney());
 		gameApi.sendToUser(MessageFactory.createErrorMessage(SystemNetworkConstant.KEYR_ACTION_IN_GAME, (short) 1000,
 				"Bạn không đủ tiền"), user);
 	}
@@ -287,32 +307,6 @@ public class MauBinhGame {
 		}
 
 		return -1;
-	}
-
-	/**
-	 * Player sẵn sàn
-	 * 
-	 * @param user
-	 * @param bln
-	 */
-	public void playerReady(User user, boolean isReady) {
-		try {
-			int nSeat = getSeatNumber(user);
-			if (nSeat < 0 || nSeat >= 4) {
-				return;
-			}
-
-			if (moneyManager.checkEnoughMoney(user)) {
-				debug("[DEBUG] [user:%s] playerReady!", user.getUserName());
-				players[nSeat].setReady(true);
-				gameApi.sendToUser(MessageFactory.createMauBinhMessage(GameCommand.ACTION_READY), user);
-			} else {
-				System.out.println("[ERROR] playerReady! Not enough money.");
-				notifyNotEnoughMoney(user);
-			}
-		} catch (Exception ex) {
-			debug("[ERROR] playerReady fail!", ex);
-		}
 	}
 
 	/**
@@ -498,7 +492,6 @@ public class MauBinhGame {
 	}
 
 	private void processGameFinish() {
-		debug("[DEBUG] processGameFinish........................!");
 		gameState = STATE.CALCULATE;
 		stopCountDown();
 		Result[][] result = GameChecker.comparePlayers(players);
@@ -532,6 +525,10 @@ public class MauBinhGame {
 
 			// gửi thông tin kết quả cho player
 			message = MessageFactory.makeTestResultMessage(i, players, winMoney, winChi, result);
+			if (calculateElo(winChi[i]) > 0) {
+
+			}
+
 			if (message != null) {
 				gameApi.sendToUser(message, user);
 			}
@@ -548,6 +545,10 @@ public class MauBinhGame {
 		// TODO tuy vao ket qua la gi ma thoi luong show bai tuong ung
 		// show bài trong 10s
 		startCountDown(calculateShowCardTime());
+	}
+
+	protected int calculateElo(int winChiNo) {
+		return -1;
 	}
 
 	private int calculateShowCardTime() {
@@ -634,30 +635,7 @@ public class MauBinhGame {
 						if (gameState == STATE.CALCULATE) {
 							gameState = STATE.FINISH;
 							stopCountDown();
-							processUserDisconnect();
-
-							// đá player hết tiền
-							for (int i = 0; i < players.length; i++) {
-								User user = players[i].getUser();
-								if (user != null && !moneyManager.checkEnoughMoney(user)) {
-									// báo user đó đã hết tiền
-									debug("[DEBUG] " + user.getUserName() + " Đá khi hết tiền! Not enough money. "
-											+ user.getMoney() + "/bet:" + moneyManager.getGameMoney());
-
-									notifyNotEnoughMoney(user);
-									gameApi.leaveRoom(user.getUserId());
-								}
-
-								// đá player chưa sẵn sàn cho ván kế
-								if (user != null && !players[i].isReady()) {
-									debug("[DEBUG] kickout player not ready!" + user.getUserName());
-									gameApi.leaveRoom(user.getUserId());
-								}
-							}
-
-							stopGame();
-							gameState = STATE.NOT_START;
-							startWaitingPlayer();
+							startNewMatch();
 							return;
 						}
 					}
@@ -670,13 +648,32 @@ public class MauBinhGame {
 
 	}
 
-	public void startWaitingPlayer() {
+	protected void startNewMatch() {
+		checkNewMatch();
+		stopGame();
+		gameState = STATE.NOT_START;
+		startWaitingPlayer();
+	}
+
+	protected void checkNewMatch() {
+		processUserDisconnect();
+
+		// đá player chưa sẵn sàn cho ván kế
+		for (int i = 0; i < players.length; i++) {
+			User user = players[i].getUser();
+			if (user != null && !players[i].isReady()) {
+				debug("[DEBUG] kickout player not ready!" + user.getUserName());
+				gameApi.leaveRoom(user.getUserId());
+			}
+		}
+	}
+
+	protected void startWaitingPlayer() {
 		if (playerSize() < 2 || gameState != STATE.NOT_START)
 			return;
 
 		// đếm cho ván tiếp theo
 		startCountDown(MauBinhConfig.startAfterSeconds);
-
 		CoreTracer.debug(this.getClass(), String.format("[IN_GAME] [DEBUG] waiting user join game in %d seconds",
 				MauBinhConfig.startAfterSeconds));
 
@@ -759,7 +756,6 @@ public class MauBinhGame {
 	}
 
 	private void processUserDisconnect() {
-		debug("[DEBUG] processUserDisconnect...................");
 		// có thằng nào disconnect trước đó ko, có thì đá ra
 		if (disconnectedUsers.size() > 0) {
 			Message message = MessageFactory.createMauBinhMessage(GameCommand.ACTION_QUIT_GAME);
@@ -772,14 +768,9 @@ public class MauBinhGame {
 				disconnectedUsers.remove(creantUserId);
 			}
 		}
-
-		debug("[DEBUG] processUserDisconnect finished...................");
 	}
 
 	public void stopCountDown() {
-		debug("[DEBUG] stop count down");
-		// countDownSeconds = startAfterSeconds;
-
 		countdownSchedule.cancel(false);
 	}
 
@@ -806,7 +797,7 @@ public class MauBinhGame {
 		return chi1 + "\n" + chi2 + "\n" + chi3;
 	}
 
-	private static enum STATE {
+	protected static enum STATE {
 		NOT_START(0), PLAYING(1), FINISH(2), CALCULATE(3);
 		private int value;
 

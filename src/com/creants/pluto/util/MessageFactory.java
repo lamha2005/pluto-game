@@ -52,34 +52,6 @@ public class MessageFactory {
 		return message;
 	}
 
-	public static Message makeStopMessage() {
-		return createMauBinhMessage(GameCommand.STOP);
-	}
-
-	public static Message makeSetLimitTimeMessage(int limitTime, byte type) {
-		Message m = createMauBinhMessage(GameCommand.SET_LIMIT_TIME);
-		try {
-			// m.dos.writeByte(limitTime);
-			// m.dos.writeByte(type);
-		} catch (Exception e) {
-			CoreTracer.error(MessageFactory.class, "[ERROR] makeSetLimitTimeMessage fail!", e);
-		}
-
-		return m;
-	}
-
-	public static Message makeTableInfoMessage(byte limitTime, byte restTime) {
-		Message m = createMauBinhMessage(GameCommand.TABLE_INFO);
-		try {
-			// m.dos.writeByte(limitTime);
-			// m.dos.writeByte(restTime);
-		} catch (Exception e) {
-			CoreTracer.error(MessageFactory.class, "[ERROR] makeTableInfoMessage fail!", e);
-		}
-
-		return m;
-	}
-
 	public static Message makeFinishMessage(int userID) {
 		Message message = createMauBinhMessage(GameCommand.ACTION_FINISH);
 		try {
@@ -274,67 +246,6 @@ public class MessageFactory {
 
 		return message;
 	}
-	// public static Message makeResultMessage(int playerIndex, Player[]
-	// players, long[] winMoney, int[] winChi,
-	// Result[][] result) {
-	// Player player = players[playerIndex];
-	// if (players == null || winChi == null || result == null || playerIndex <
-	// 0 || playerIndex >= players.length
-	// || player.getUser() == null) {
-	// return null;
-	// }
-	//
-	// Message message = createMauBinhMessage(GameCommand.ACTION_END_GAME);
-	// try {
-	// message.putInt(SystemNetworkConstant.KEYI_USER_ID,
-	// player.getUser().getUserId());
-	// message.putLong(SystemNetworkConstant.KEYL_MONEY, winMoney[playerIndex]);
-	// byte type = (byte) ((player.getCards().IsFailedArrangement() ||
-	// player.isTimeOut()) ? -2
-	// : player.getCards().getMauBinhType());
-	//
-	// message.putByte(GameCommand.KEYB_MAUBINH_TYPE, type);
-	// // tổng thắng thua bao nhiêu chi
-	// message.putInt(GameCommand.KEYI_WINCHI, winChi[playerIndex]);
-	//
-	// for (int i = 0; i < players.length; i++)
-	// if (i != playerIndex && players[i].getUser() != null) {
-	// message.putInt(SystemNetworkConstant.KEYI_USER_ID,
-	// players[i].getUser().getUserId());
-	// message.putLong(SystemNetworkConstant.KEYL_MONEY, winMoney[i]);
-	// message.putInt(GameCommand.KEYI_WINCHI, winChi[i]);
-	// type = (byte) (players[i].getCards().IsFailedArrangement() ? -2
-	// : players[i].getCards().getMauBinhType());
-	// // -2 là thủng hoặc hết giờ
-	// message.putByte(GameCommand.KEYI_WINCHI, type);
-	//
-	// List<Card> cardList = players[i].getCards().getArrangeCards();
-	// if (cardList == null) {
-	// cardList = players[i].getCards().getCards();
-	// }
-	//
-	// byte[] cardIds = new byte[cardList.size()];
-	// for (int j = 0; j < cardList.size(); j++) {
-	// cardIds[j] = cardList.get(j).getId();
-	// }
-	//
-	// message.putBytes(NetworkConstant.KEYBLOB_CARD_LIST, cardIds);
-	//
-	// // TODO dinh nghia key winchi theo từng loại, ko dùng key
-	// // giống nhau
-	// message.putInt((byte) 0x06, result[playerIndex][i].getWinChiMauBinh());
-	// message.putInt((byte) 0x06, result[playerIndex][i].getWinChi01());
-	// message.putInt((byte) 0x06, result[playerIndex][i].getWinChi02());
-	// message.putInt((byte) 0x06, result[playerIndex][i].getWinChi03());
-	// message.putInt((byte) 0x06, result[playerIndex][i].getWinChiAce());
-	// }
-	// } catch (Exception ex) {
-	// Reporter.getErrorLogger().error("Mau binh
-	// MessageFactory.makeResultMessage error: ", ex);
-	// }
-	//
-	// return message;
-	// }
 
 	public static Message makeAutoArrangeResultMessage(List<Card> cards) {
 		Message message = createMauBinhMessage(GameCommand.ACTION_AUTO_ARRANGE);
@@ -348,37 +259,6 @@ public class MessageFactory {
 			message.putLong(GameCommand.KEYL_UTC_TIME, DateTime.now().toDateTime(DateTimeZone.UTC).getMillis());
 		} catch (Exception e) {
 			CoreTracer.error(MessageFactory.class, "[ERROR] makeAutoArrangeResultMessage fail!", e);
-		}
-
-		return message;
-	}
-
-	public static Message makeSortByOrderMessage(List<Card> cards) {
-		Message message = createMauBinhMessage(GameCommand.SORT_BY_ORDER);
-		try {
-			byte[] cardIds = new byte[cards.size()];
-			for (int i = 0; i < cards.size(); i++) {
-				cardIds[i] = cards.get(i).getId();
-			}
-
-			message.putBytes(NetworkConstant.KEYBLOB_CARD_LIST, cardIds);
-		} catch (Exception e) {
-			CoreTracer.error(MessageFactory.class, "[ERROR] makeSortByOrderMessage fail!", e);
-		}
-
-		return message;
-	}
-
-	public static Message makeSortByTypeMessage(List<Card> cards) {
-		Message message = createMauBinhMessage(GameCommand.SORT_BY_TYPE);
-		try {
-			byte[] cardIds = new byte[cards.size()];
-			for (int i = 0; i < cards.size(); i++) {
-				cardIds[i] = cards.get(i).getId();
-			}
-			message.putBytes(NetworkConstant.KEYBLOB_CARD_LIST, cardIds);
-		} catch (Exception e) {
-			CoreTracer.error(MessageFactory.class, "[ERROR] makeSortByTypeMessage fail!", e);
 		}
 
 		return message;
@@ -404,34 +284,6 @@ public class MessageFactory {
 		message.putShort(SystemNetworkConstant.KEYR_COMMAND_ID, serviceId);
 		message.putShort(SystemNetworkConstant.KEYR_ERROR, code);
 		message.putString(SystemNetworkConstant.KEYS_MESSAGE, errorMessage);
-		return message;
-	}
-
-	public static Message makeInGameInforMessage(boolean isFinish, List<Card> cards, int limitTime, int restTime,
-			byte maubinhType) {
-		Message m = new Message();
-		try {
-			if ((cards == null) || (cards.isEmpty())) {
-				return null;
-			}
-
-			// m.dos.writeByte(isFinish ? 1 : 0);
-			// for (int i = 0; i < cards.size(); i++) {
-			// m.dos.writeByte(cards.get(i).getId());
-			// }
-			//
-			// m.dos.writeByte(limitTime);
-			// m.dos.writeByte(restTime);
-			// m.dos.writeByte(maubinhType);
-		} catch (Exception e) {
-			CoreTracer.error(MessageFactory.class, "[ERROR] makeInGameInforMessage fail!", e);
-		}
-
-		return m;
-	}
-
-	public static Message makeInGameInforMessageForViewer(int limitTime, int restTime) {
-		Message message = new Message();
 		return message;
 	}
 
